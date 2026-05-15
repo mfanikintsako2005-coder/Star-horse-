@@ -1,0 +1,6 @@
+{
+  "name": "Lumina AI Video",
+  "description": "High-performance AI video generation studio powered by Stable Video Diffusion and Kling. Create cinematic clips from text prompts in seconds.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

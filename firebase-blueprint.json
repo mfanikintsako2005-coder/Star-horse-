@@ -1,0 +1,87 @@
+{
+  "entities": {
+    "VideoJob": {
+      "title": "Video Generation Job",
+      "description": "Represents a video generation task and its current state.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "The unique ID of the job."
+        },
+        "userId": {
+          "type": "string",
+          "description": "The ID of the user who created the job."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The text prompt used for generation."
+        },
+        "style": {
+          "type": "string",
+          "description": "The artistic style for the video (e.g., anime, pixel, comic)."
+        },
+        "aspectRatio": {
+          "type": "string",
+          "description": "The aspect ratio of the video (9:16 or 16:9)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["pending", "processing", "completed", "failed"],
+          "description": "The current status of the generation."
+        },
+        "videoUrl": {
+          "type": "string",
+          "description": "The URL of the generated video (if completed)."
+        },
+        "previewUrl": {
+          "type": "string",
+          "description": "A preview image or thumbnail URL."
+        },
+        "error": {
+          "type": "string",
+          "description": "Error message if the job failed."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the job was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the job was last updated."
+        },
+        "falRequestId": {
+          "type": "string",
+          "description": "The request ID from fal.ai."
+        }
+      },
+      "required": ["userId", "prompt", "style", "aspectRatio", "status", "createdAt", "updatedAt"]
+    },
+    "User": {
+      "title": "User Profile",
+      "description": "Secure user profile data.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    }
+  },
+  "firestore": {
+    "/videos/{videoId}": {
+      "schema": "VideoJob",
+      "description": "Collection of video generation jobs."
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Collection of user profiles."
+    }
+  }
+}

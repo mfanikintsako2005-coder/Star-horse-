@@ -1,0 +1,85 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Server-side identity verification
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Validation for VideoJob entity
+    function isValidVideoJob(data) {
+      return data.userId == request.auth.uid &&
+             data.prompt is string && data.prompt.size() > 0 && data.prompt.size() <= 2000 &&
+             data.style is string && data.style.size() <= 100 &&
+             data.aspectRatio is string && data.aspectRatio.size() <= 20 &&
+             data.status in ['pending', 'processing', 'completed', 'failed'] &&
+             (data.get('videoUrl', null) == null || (data.videoUrl is string && data.videoUrl.size() <= 2000)) &&
+             (data.get('previewUrl', null) == null || (data.previewUrl is string && data.previewUrl.size() <= 2000)) &&
+             (data.get('error', null) == null || (data.error is string && data.error.size() <= 4000)) &&
+             (data.get('falRequestId', null) == null || (data.falRequestId is string && data.falRequestId.size() <= 256)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Video jobs collection
+    match /videos/{videoId} {
+      // Users can only see their own videos
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      // Users can create a job for themselves
+      allow create: if isSignedIn() &&
+                      isValidVideoJob(request.resource.data) &&
+                      request.resource.data.createdAt == request.time &&
+                      request.resource.data.updatedAt == request.time;
+
+      // Update logic
+      allow update: if isSignedIn() &&
+                      resource.data.userId == request.auth.uid &&
+                      isValidVideoJob(request.resource.data) &&
+                      request.resource.data.userId == resource.data.userId &&
+                      request.resource.data.createdAt == resource.data.createdAt &&
+                      request.resource.data.updatedAt == request.time;
+
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if false; // Users cannot list other users
+      allow create, update: if isOwner(userId) && 
+        incoming().uid == userId &&
+        incoming().email is string &&
+        incoming().updatedAt == request.time;
+      allow delete: if false;
+    }
+  }
+}
