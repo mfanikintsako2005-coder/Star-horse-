@@ -48,6 +48,10 @@ async function startServer() {
       // Use hunyuan-video which is a modern, high-quality model
       console.log(`Starting generation for job ${jobId}: "${enhancedPrompt}" with ratio: ${aspectRatio}`);
       
+      // Tracking last update time to throttle Firestore writes and save quota
+      let lastFirestoreUpdate = 0;
+      const THROTTLE_MS = 3000; // Only update every 3 seconds
+
       const result = await fal.subscribe("fal-ai/hunyuan-video", {
         input: {
           prompt: enhancedPrompt,
@@ -55,6 +59,16 @@ async function startServer() {
         },
         logs: true,
         onQueueUpdate: async (update) => {
+          const now = Date.now();
+          const status = update.status.toLowerCase();
+          const isFinalStatus = status === 'completed' || status === 'failed';
+          
+          // Throttle: only update if it's been THROTTLE_MS or if it's a final state
+          if (!isFinalStatus && (now - lastFirestoreUpdate < THROTTLE_MS)) {
+            return;
+          }
+          
+          lastFirestoreUpdate = now;
           console.log(`Job ${jobId} update:`, update.status);
           
           let progress = 0;
@@ -64,7 +78,7 @@ async function startServer() {
 
           try {
             await db.collection('videos').doc(jobId).update({
-              status: update.status.toLowerCase() === 'in_progress' ? 'processing' : 'pending',
+              status: status === 'in_progress' ? 'processing' : status,
               progress: progress,
               updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });

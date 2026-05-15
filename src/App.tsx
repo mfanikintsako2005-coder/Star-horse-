@@ -6,7 +6,7 @@ import { GenerationForm } from './components/GenerationForm';
 import { VideoPreview } from './components/VideoPreview';
 import { VideoJob, VideoStyle, AspectRatio } from './types';
 import { handleFirestoreError, OperationType } from './lib/utils';
-import { Film, History, LogOut, Sparkles, User as UserIcon, Clock, ChevronRight } from 'lucide-react';
+import { Film, History, LogOut, Sparkles, User as UserIcon, Clock, ChevronRight, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AuthModal } from './components/AuthModal';
 import { cn } from './lib/utils';
@@ -18,6 +18,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isReady, setIsReady] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [appError, setAppError] = useState<string | null>(null);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -40,12 +41,14 @@ export default function App() {
       limit(10)
     );
 
-    return onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       const h = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as VideoJob));
       setHistory(h);
+      setAppError(null); // Clear errors on success
       
       // If there's an active job in progress, update currentJob reference
-      if (currentJob && (currentJob.status === 'pending' || currentJob.status === 'processing')) {
+      // We check for the ID, we don't need status in dependencies because snapshot fires on changes
+      if (currentJob) {
         const updated = h.find(j => j.id === currentJob.id);
         if (updated) {
           setCurrentJob(updated);
@@ -55,9 +58,15 @@ export default function App() {
         }
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'videos', auth);
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (errMsg.toLowerCase().includes('quota exceeded')) {
+        setAppError("System Quota Exceeded: The database is currently handling high traffic. History and updates may be temporarily unavailable.");
+      }
+      console.error("Firestore Snapshot Error:", error);
     });
-  }, [user, currentJob?.id, currentJob?.status]);
+
+    return () => unsubscribe();
+  }, [user, currentJob?.id]); // Removed status from dependencies to avoid listener churn
 
   const handleGenerate = async (data: { prompt: string; style: VideoStyle; aspectRatio: AspectRatio }) => {
     if (!user) return;
@@ -66,13 +75,13 @@ export default function App() {
     const path = 'videos';
     
     try {
-      // 1. Create job in Firestore
+      // 1. Create job in Firestore with initial 'processing' status to save a write
       const jobData = {
         userId: user.uid,
         prompt: data.prompt,
         style: data.style,
         aspectRatio: data.aspectRatio,
-        status: 'pending' as const,
+        status: 'processing' as const, // Start as processing to avoid an extra updateDoc
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
@@ -87,17 +96,7 @@ export default function App() {
       const newJob = { id: docRef.id, ...jobData } as unknown as VideoJob;
       setCurrentJob(newJob);
 
-      // 2. Transition to processing state immediately
-      try {
-        await updateDoc(doc(db, path, docRef.id), {
-          status: 'processing',
-          updatedAt: serverTimestamp()
-        });
-      } catch (error) {
-        console.error("Failed to set processing state", error);
-      }
-
-      // 3. Trigger Server-side generation
+      // 2. Trigger Server-side generation
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -250,6 +249,19 @@ export default function App() {
       </nav>
 
       <main className="max-w-7xl mx-auto px-6 py-12 grid grid-cols-1 lg:grid-cols-12 gap-12">
+        {appError && (
+          <div className="lg:col-span-12">
+            <motion.div 
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex items-center gap-3 text-red-400"
+            >
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{appError}</p>
+            </motion.div>
+          </div>
+        )}
+        
         {/* Left Col: Form */}
         <div className="lg:col-span-7 space-y-12">
           <div className="space-y-2">
